@@ -1,0 +1,41 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bookstore-catolog-deployment
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bookstore-catalog
+  template:
+    metadata:
+      labels:
+        app: bookstore-catalog
+    spec:
+      containers:
+        - image: jasakerec/bookstore-catalog:latest
+          name: bookstore-catalog
+          env:
+            - name: DB_URL
+              valueFrom:
+                secretKeyRef:
+                  name: database-secrets
+                  key: DB_URL
+          ports:
+            - containerPort: 8080
+              name: server
+
+---
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: bookstore-catalog
+spec:
+  type: LoadBalancer
+  ports:
+    - port: 8080 # The port on which the service will be exposed
+      protocol: TCP
+      targetPort: 8080  # The port on which the FastAPI app is running in the container
+  selector:
+    app: bookstore-catalog
