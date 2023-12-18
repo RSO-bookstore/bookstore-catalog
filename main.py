@@ -1,7 +1,33 @@
+import os
 from typing import Optional
-from fastapi import FastAPI, Request, HTTPException, Response
+from fastapi import FastAPI, Request, HTTPException, Response, status
+from fastapi_utils.tasks import repeat_every
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 import os
+from pydantic import BaseModel
+from dotenv import dotenv_values
+
+class Config:
+    db_url: str = None
+    app_name: str = None
+    # Read from .env file
+    db_url = dotenv_values('.env')['DB_URL']
+    app_name = dotenv_values('.env')['APP_NAME']
+    # Read from ENV
+    db_url = os.getenv('DB_URL', default=db_url)
+    app_name = os.getenv('APP_NAME', default=app_name)
+
+    broken: bool = False
+
+CONFIG = Config()
+app = FastAPI()
+
+class Book(BaseModel):
+    title: str
+    author: str
+    genre: str
+    price: int
+    stock_quantity: int
 
 
 class Books(SQLModel, table=True):
@@ -12,20 +38,34 @@ class Books(SQLModel, table=True):
     price: int
     stock_quantity: int
 
+@app.on_event("startup")
+@repeat_every(seconds=5)
+def reload_config():
+    global CONFIG
+    print('Reloading config...')
 
-app = FastAPI()
+    # Read from .env file
+    db_url = dotenv_values('.env')['DB_URL']
+    app_name = dotenv_values('.env')['APP_NAME']
+    # Read from ENV
+    db_url = os.getenv('DB_URL', default=db_url)
+    app_name = os.getenv('APP_NAME', default=app_name)
 
-DB_URL = os.getenv('DB_URL', default=None)
+    if db_url != None and app_name != None:
+        CONFIG.db_url = db_url
+        CONFIG.app_name = app_name
+    else:
+        raise KeyError('No DB URL or APP NAME specified in ENV...')
 
-if DB_URL == None:
+
+if CONFIG.db_url == None:
     raise KeyError('No DB URL specified in ENV...')
 
-esql_url = DB_URL
-engine = create_engine(esql_url, echo=True)
+engine = create_engine(CONFIG.db_url, echo=True)
 
 @app.get("/")
 def read_root():
-    return {"Hello": "World"}
+    return {"Hello": "World", "app_name": CONFIG.app_name}
 
 
 @app.get("/books")
@@ -38,14 +78,13 @@ def read_books():
 
 
 @app.post('/books')
-async def create_book(request: Request):
+async def create_book(bookBody: Book):
     try:
-        json = await request.json()
-        title = json['title']
-        author = json['author']
-        genre = json['genre']
-        price = int(json['price'])
-        stock_quantity = int(json['stock_quantity'])
+        title = bookBody.title
+        author = bookBody.author
+        genre = bookBody.genre
+        price = bookBody.price
+        stock_quantity = bookBody.stock_quantity
     
         book = Books(title=title, author=author, genre=genre, price=price, stock_quantity=stock_quantity)
         session = Session(engine)
@@ -57,3 +96,59 @@ async def create_book(request: Request):
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+    
+@app.get("/books/{id}")
+def get_book(id: int, response: Response):
+    with Session(engine) as session:
+        book = session.exec(select(Books).where(Books.id == id))
+        for b in book:
+            print(b)
+            response.status_code = status.HTTP_200_OK
+            return b
+    response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    return None
+
+@app.get("/health/live")
+def get_health_live(response: Response):
+        healthy = True
+        try:
+            session = Session(engine)
+            book = session.exec(select(Books)).first()
+            healthy = True
+        except Exception as e:
+            healthy = False
+
+        if CONFIG.broken:
+            healthy = False
+        
+        if healthy:
+            response.status_code = status.HTTP_200_OK
+            return {"State": "UP"}
+        else:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            return {"State": "DOWN"}
+
+@app.get("/health/ready")
+def get_health_live(response: Response):
+        healthy = True
+        try:
+            session = Session(engine)
+            book = session.exec(select(Books)).first()
+            healthy = True
+        except Exception as e:
+            healthy = False
+
+        if CONFIG.broken:
+            healthy = False
+        
+        if healthy:
+            response.status_code = status.HTTP_200_OK
+            return {"State": "UP"}
+        else:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            return {"State": "DOWN"}
+        
+@app.post("/broken")
+def set_broken():
+    CONFIG.broken = True
+    return Response(status_code=201)
