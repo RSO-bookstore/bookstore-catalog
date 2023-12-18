@@ -117,13 +117,14 @@ def get_book(id: int, response: Response):
     return None
 
 @app.get("/health/live")
-def get_health_live(response: Response):
+async def get_health_live(response: Response):
         healthy = True
         try:
             session = Session(engine)
             book = session.exec(select(Books)).first()
             healthy = True
         except Exception as e:
+            print(e)
             healthy = False
 
         if CONFIG.broken:
@@ -137,13 +138,14 @@ def get_health_live(response: Response):
             return {"State": "DOWN"}
 
 @app.get("/health/ready")
-def get_health_live(response: Response):
+async def get_health_live(response: Response):
         healthy = True
         try:
             session = Session(engine)
             book = session.exec(select(Books)).first()
             healthy = True
         except Exception as e:
+            print(e)
             healthy = False
 
         if CONFIG.broken:
