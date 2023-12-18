@@ -11,8 +11,11 @@ class Config:
     db_url: str = None
     app_name: str = None
     # Read from .env file
-    db_url = dotenv_values('.env')['DB_URL']
-    app_name = dotenv_values('.env')['APP_NAME']
+    try:
+        db_url = dotenv_values('.env')['DB_URL']
+        app_name = dotenv_values('.env')['APP_NAME']
+    except Exception as e:
+        print('No .env file with DB_URL and APP_NAME found...')
     # Read from ENV
     db_url = os.getenv('DB_URL', default=db_url)
     app_name = os.getenv('APP_NAME', default=app_name)
@@ -44,9 +47,14 @@ def reload_config():
     global CONFIG
     print('Reloading config...')
 
+    db_url = None
+    app_name = None
     # Read from .env file
-    db_url = dotenv_values('.env')['DB_URL']
-    app_name = dotenv_values('.env')['APP_NAME']
+    try:
+        db_url = dotenv_values('.env')['DB_URL']
+        app_name = dotenv_values('.env')['APP_NAME']
+    except Exception as e:
+        pass
     # Read from ENV
     db_url = os.getenv('DB_URL', default=db_url)
     app_name = os.getenv('APP_NAME', default=app_name)
