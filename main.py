@@ -121,7 +121,7 @@ async def get_health_live(response: Response):
         healthy = True
         try:
             session = Session(engine)
-            book = session.exec(select(Books)).first()
+            session.close()
             healthy = True
         except Exception as e:
             print(e)
@@ -138,15 +138,8 @@ async def get_health_live(response: Response):
             return {"State": "DOWN"}
 
 @app.get("/health/ready")
-async def get_health_live(response: Response):
+async def get_health_ready(response: Response):
         healthy = True
-        try:
-            session = Session(engine)
-            book = session.exec(select(Books)).first()
-            healthy = True
-        except Exception as e:
-            print(e)
-            healthy = False
 
         if CONFIG.broken:
             healthy = False
