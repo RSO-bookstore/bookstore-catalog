@@ -6,6 +6,7 @@ from sqlmodel import Field, Session, SQLModel, create_engine, select
 import os
 from pydantic import BaseModel
 from dotenv import dotenv_values
+from prometheus_client import Counter, make_asgi_app
 
 class Config:
     db_url: str = None
@@ -22,8 +23,13 @@ class Config:
 
     broken: bool = False
 
+books_get_request_counter = Counter('books_get_request', 'Counter for books GET request')
+
 CONFIG = Config()
 app = FastAPI()
+# Add prometheus asgi middleware to route /metrics requests
+metrics_app = make_asgi_app()
+app.mount("/metrics", metrics_app)
 
 class Book(BaseModel):
     title: str
@@ -80,6 +86,7 @@ def read_root():
 def read_books():
     with Session(engine) as session:
         books = session.exec(select(Books)).all()
+        books_get_request_counter.inc()
         for book in books:
             print(book)
         return books
