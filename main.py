@@ -7,10 +7,14 @@ import os
 from pydantic import BaseModel
 from dotenv import dotenv_values
 from prometheus_client import Counter, make_asgi_app
+import logging
+import time
+import uuid
 
 class Config:
     db_url: str = None
-    app_name: str = None
+    app_name: str = "bookstore_catalog"
+    version: str = "v1"
     # Read from .env file
     try:
         db_url = dotenv_values('.env')['DB_URL']
@@ -27,9 +31,25 @@ books_get_request_counter = Counter('books_get_request', 'Counter for books GET 
 
 CONFIG = Config()
 app = FastAPI()
+# logging.basicConfig('logging.conf')
+logger = logging.getLogger('uvicorn')
 # Add prometheus asgi middleware to route /metrics requests
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    idem = uuid.uuid4()
+    logger.info(f"method={str.upper(request.method)} rid={idem} app={CONFIG.app_name} version={CONFIG.version} START_REQUEST path={request.url.path}")
+    start_time = time.time()
+    
+    response = await call_next(request)
+    
+    process_time = (time.time() - start_time) * 1000
+    formatted_process_time = '{0:.2f}'.format(process_time)
+    logger.info(f"method={str.upper(request.method)} rid={idem} app={CONFIG.app_name} version={CONFIG.version} END_REQUEST completed_in={formatted_process_time}ms status_code={response.status_code}")
+    
+    return response
 
 class Book(BaseModel):
     title: str
@@ -51,7 +71,7 @@ class Books(SQLModel, table=True):
 @repeat_every(seconds=5)
 def reload_config():
     global CONFIG
-    print('Reloading config...')
+    logger.info(f"app={CONFIG.app_name} version={CONFIG.version} | Reloading config")
 
     db_url = None
     app_name = None
