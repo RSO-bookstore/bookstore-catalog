@@ -38,7 +38,8 @@ app = FastAPI(title=APP_METADATA['title'],
               summary=APP_METADATA['summary'], 
               description=APP_METADATA['description'], 
               contact=APP_METADATA['contact'],
-              openapi_tags=APP_METADATA['tags_metadata'])
+              openapi_tags=APP_METADATA['tags_metadata'],
+              root_path="/bookstore-catalog")
 
 # Add prometheus asgi middleware to route /metrics requests
 metrics_app = make_asgi_app()

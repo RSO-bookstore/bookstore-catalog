@@ -29,6 +29,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: bookstore-catalog
+                name: bookstore-cart
                 port:
                   number: 8080
