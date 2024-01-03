@@ -10,6 +10,9 @@ from prometheus_client import Counter, make_asgi_app
 import logging
 import time
 import uuid
+from enum import Enum
+from app_metadata import APP_METADATA
+import translators as ts
 
 class Config:
     db_url: str = None
@@ -27,12 +30,17 @@ class Config:
 
     broken: bool = False
 
+logger = logging.getLogger('uvicorn')
 books_get_request_counter = Counter('books_get_request', 'Counter for books GET request')
 
 CONFIG = Config()
-app = FastAPI()
-# logging.basicConfig('logging.conf')
-logger = logging.getLogger('uvicorn')
+app = FastAPI(title=APP_METADATA['title'], 
+              summary=APP_METADATA['summary'], 
+              description=APP_METADATA['description'], 
+              version=APP_METADATA['version'], 
+              contact=APP_METADATA['contact'],
+              openapi_tags=APP_METADATA['tags_metadata'])
+
 # Add prometheus asgi middleware to route /metrics requests
 metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
@@ -51,10 +59,21 @@ async def log_requests(request: Request, call_next):
     
     return response
 
+class DestinationLanguage(str, Enum):
+    en = 'en'
+    de = 'de'
+    it = 'it'
+    ru = 'ru'
+    es = 'es'
+    pt = 'pt'
+    ja = 'ja'
+    hr = 'hr'
+
 class Book(BaseModel):
     title: str
     author: str
     genre: str
+    description: str
     price: int
     stock_quantity: int
 
@@ -64,6 +83,7 @@ class Books(SQLModel, table=True):
     title: str
     author: str
     genre: str
+    description: str
     price: int
     stock_quantity: int
 
@@ -102,7 +122,7 @@ def read_root():
     return {"Hello": "World", "app_name": CONFIG.app_name}
 
 
-@app.get("/books")
+@app.get("/books", tags=['books'])
 def read_books():
     with Session(engine) as session:
         books = session.exec(select(Books)).all()
@@ -112,16 +132,17 @@ def read_books():
         return books
 
 
-@app.post('/books')
+@app.post('/books', tags=['book'])
 async def create_book(bookBody: Book):
     try:
         title = bookBody.title
         author = bookBody.author
         genre = bookBody.genre
+        description = bookBody.description
         price = bookBody.price
         stock_quantity = bookBody.stock_quantity
     
-        book = Books(title=title, author=author, genre=genre, price=price, stock_quantity=stock_quantity)
+        book = Books(title=title, author=author, genre=genre, description=description, price=price, stock_quantity=stock_quantity)
         session = Session(engine)
         session.add(book)
         session.commit()
@@ -132,7 +153,7 @@ async def create_book(bookBody: Book):
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
     
-@app.get("/books/{id}")
+@app.get("/books/{id}", tags=['book'])
 def get_book(id: int, response: Response):
     with Session(engine) as session:
         book = session.exec(select(Books).where(Books.id == id))
@@ -143,7 +164,72 @@ def get_book(id: int, response: Response):
     response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
     return None
 
-@app.get("/health/live")
+@app.delete("/books/{id}", tags=['book'])
+def delete_book(id: int, response: Response):
+    with Session(engine) as session:
+        try:
+            book = session.exec(select(Books).where(Books.id == id)).one()
+        except Exception as e:
+            response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            raise Exception(e)
+
+        session.delete(book)
+        session.commit()
+        response.status_code = status.HTTP_200_OK
+        return None
+
+@app.put("/books/{id}", tags=['book'])
+def update_book(id: int, newBook: Book, response: Response):
+    with Session(engine) as session:
+        try:
+            book = session.exec(select(Books).where(Books.id == id)).one()
+        except Exception as e:
+            response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            raise Exception(e)
+
+        book.author = newBook.author
+        book.title = newBook.title
+        book.description = newBook.description
+        book.genre = newBook.genre
+        book.stock_quantity = newBook.stock_quantity
+        book.price = newBook.price
+
+        session.add(book)
+        session.commit()
+        response.status_code = status.HTTP_200_OK
+        return None
+    
+@app.put("/books/{id}/quantity", tags=['book'])
+def change_book_stock_quantity(id: int, change: int, response: Response):
+    with Session(engine) as session:
+        try:
+            book = session.exec(select(Books).where(Books.id == id)).one()
+        except Exception as e:
+            response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+            raise Exception(e)
+
+        book.stock_quantity = max(0, book.stock_quantity + change)
+
+        session.add(book)
+        session.commit()
+        response.status_code = status.HTTP_200_OK
+        return None
+
+@app.get("/books/{id}/translate", tags=['translate'])
+def translate_book(id: int, dest_lang: DestinationLanguage, response: Response):
+    with Session(engine) as session:
+        book = session.exec(select(Books).where(Books.id == id))
+        for b in book:
+            genre = ts.translate_text(b.genre, translator='google', from_language="sl", to_language=dest_lang.value)
+            desc = ts.translate_text(b.description, translator='google', from_language="sl", to_language=dest_lang.value)
+            response.status_code = status.HTTP_200_OK
+            b.genre = genre
+            b.description = desc
+            return b
+    response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
+    return None
+
+@app.get("/health/live", tags=['healthchecks'])
 async def get_health_live(response: Response):
         healthy = True
         try:
@@ -164,7 +250,7 @@ async def get_health_live(response: Response):
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
             return {"State": "DOWN"}
 
-@app.get("/health/ready")
+@app.get("/health/ready", tags=['healthchecks'])
 async def get_health_ready(response: Response):
         healthy = True
 
@@ -178,7 +264,7 @@ async def get_health_ready(response: Response):
             response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
             return {"State": "DOWN"}
         
-@app.post("/broken")
+@app.post("/broken", tags=['healthchecks'])
 def set_broken():
     CONFIG.broken = True
     return Response(status_code=201)

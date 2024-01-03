@@ -49,10 +49,10 @@ kind: Service
 metadata:
   name: bookstore-catalog
 spec:
-  type: LoadBalancer
+  type: ClusterIP
   ports:
     - port: 8080 # The port on which the service will be exposed
       protocol: TCP
-      targetPort: 8080  # The port on which the FastAPI app is running in the container
+      targetPort: 8080 # The port on which the FastAPI app is running in the container
   selector:
     app: bookstore-catalog
