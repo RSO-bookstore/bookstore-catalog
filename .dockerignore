@@ -1,3 +1,11 @@
 venv/
 __pycache__/
 .DS_Store
+.env
+.venv
+env/
+README.md
+LICENSE
+.gitignore
+.github/
+k8s/

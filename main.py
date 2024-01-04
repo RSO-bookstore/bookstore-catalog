@@ -1,5 +1,5 @@
 import os
-from typing import Optional
+from typing import Optional, List
 from fastapi import FastAPI, Request, HTTPException, Response, status
 from fastapi_utils.tasks import repeat_every
 from sqlmodel import Field, Session, SQLModel, create_engine, select
@@ -13,27 +13,16 @@ import uuid
 from enum import Enum
 from app_metadata import APP_METADATA
 import translators as ts
+from strawberry.fastapi import GraphQLRouter
+from config import CONFIG
+from database import engine, Books
+from schema import schema
 
-class Config:
-    db_url: str = None
-    app_name: str = "bookstore_catalog"
-    version: str = "v1"
-    # Read from .env file
-    try:
-        db_url = dotenv_values('.env')['DB_URL']
-        app_name = dotenv_values('.env')['APP_NAME']
-    except Exception as e:
-        print('No .env file with DB_URL and APP_NAME found...')
-    # Read from ENV
-    db_url = os.getenv('DB_URL', default=db_url)
-    app_name = os.getenv('APP_NAME', default=app_name)
-
-    broken: bool = False
 
 logger = logging.getLogger('uvicorn')
 books_get_request_counter = Counter('books_get_request', 'Counter for books GET request')
 
-CONFIG = Config()
+# CONFIG = Config()
 app = FastAPI(title=APP_METADATA['title'], 
               summary=APP_METADATA['summary'], 
               description=APP_METADATA['description'], 
@@ -78,15 +67,6 @@ class Book(BaseModel):
     stock_quantity: int
 
 
-class Books(SQLModel, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
-    title: str
-    author: str
-    genre: str
-    description: str
-    price: int
-    stock_quantity: int
-
 @app.on_event("startup")
 @repeat_every(seconds=5)
 def reload_config():
@@ -112,10 +92,26 @@ def reload_config():
         raise KeyError('No DB URL or APP NAME specified in ENV...')
 
 
-if CONFIG.db_url == None:
-    raise KeyError('No DB URL specified in ENV...')
+# @strawberry.type
+# class Book:
+#     id: int
+#     title: str
+#     author: str
+#     description: str
+#     price: int
+#     stock_quantity: int
 
-engine = create_engine(CONFIG.db_url, echo=True)
+# @strawberry.type
+# class Query:
+#     books: List[Book] = strawberry.field(resolver=get_all_books)
+
+#     @strawberry.field
+#     def book(self, id: strawberry.ID) -> Book:
+#         return get_one_book(id)
+
+# schema = strawberry.Schema(Query)
+graphql_app = GraphQLRouter(schema)
+app.include_router(graphql_app, prefix='/graphql')
 
 @app.get("/")
 def read_root():

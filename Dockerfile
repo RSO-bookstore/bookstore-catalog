@@ -14,9 +14,7 @@ COPY --from=build /usr/local/lib/python3.9/site-packages /usr/local/lib/python3.
 
 COPY --from=build /usr/local/bin /usr/local/bin
 
-COPY main.py .
-COPY app_metadata.py .
-COPY __init__.py .
+COPY . .
 
 EXPOSE 8080
 
