@@ -8,6 +8,7 @@ class Book:
     title: str
     author: str
     description: str
+    genre: str
     price: int
     stock_quantity: int
 

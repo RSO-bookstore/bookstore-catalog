@@ -1,12 +1,13 @@
 import os
 from typing import Optional, List
 from fastapi import FastAPI, Request, HTTPException, Response, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi_utils.tasks import repeat_every
 from sqlmodel import Field, Session, SQLModel, create_engine, select
 import os
 from pydantic import BaseModel
 from dotenv import dotenv_values
-from prometheus_client import Counter, make_asgi_app
+# from prometheus_client import Counter, make_asgi_app
 import logging
 import time
 import uuid
@@ -17,10 +18,10 @@ from strawberry.fastapi import GraphQLRouter
 from config import CONFIG
 from database import engine, Books
 from schema import schema
+from metrics import metrics_app
 
 
 logger = logging.getLogger('uvicorn')
-books_get_request_counter = Counter('books_get_request', 'Counter for books GET request')
 
 # CONFIG = Config()
 app = FastAPI(title=APP_METADATA['title'], 
@@ -30,8 +31,15 @@ app = FastAPI(title=APP_METADATA['title'],
               openapi_tags=APP_METADATA['tags_metadata'],
               root_path="/bookstore-catalog")
 
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 # Add prometheus asgi middleware to route /metrics requests
-metrics_app = make_asgi_app()
+# metrics_app = make_asgi_app()
 app.mount("/metrics", metrics_app)
 
 @app.middleware("http")
@@ -92,24 +100,6 @@ def reload_config():
         raise KeyError('No DB URL or APP NAME specified in ENV...')
 
 
-# @strawberry.type
-# class Book:
-#     id: int
-#     title: str
-#     author: str
-#     description: str
-#     price: int
-#     stock_quantity: int
-
-# @strawberry.type
-# class Query:
-#     books: List[Book] = strawberry.field(resolver=get_all_books)
-
-#     @strawberry.field
-#     def book(self, id: strawberry.ID) -> Book:
-#         return get_one_book(id)
-
-# schema = strawberry.Schema(Query)
 graphql_app = GraphQLRouter(schema)
 app.include_router(graphql_app, prefix='/graphql')
 
@@ -122,9 +112,6 @@ def read_root():
 def read_books():
     with Session(engine) as session:
         books = session.exec(select(Books)).all()
-        books_get_request_counter.inc()
-        for book in books:
-            print(book)
         return books
 
 
@@ -154,7 +141,6 @@ def get_book(id: int, response: Response):
     with Session(engine) as session:
         book = session.exec(select(Books).where(Books.id == id))
         for b in book:
-            print(b)
             response.status_code = status.HTTP_200_OK
             return b
     response.status_code = status.HTTP_500_INTERNAL_SERVER_ERROR
@@ -216,9 +202,11 @@ def translate_book(id: int, dest_lang: DestinationLanguage, response: Response):
     with Session(engine) as session:
         book = session.exec(select(Books).where(Books.id == id))
         for b in book:
+            title = ts.translate_text(b.title, translator='google', from_language="sl", to_language=dest_lang.value)
             genre = ts.translate_text(b.genre, translator='google', from_language="sl", to_language=dest_lang.value)
             desc = ts.translate_text(b.description, translator='google', from_language="sl", to_language=dest_lang.value)
             response.status_code = status.HTTP_200_OK
+            b.title = title
             b.genre = genre
             b.description = desc
             return b
