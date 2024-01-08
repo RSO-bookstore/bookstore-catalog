@@ -29,7 +29,8 @@ app = FastAPI(title=APP_METADATA['title'],
               description=APP_METADATA['description'], 
               contact=APP_METADATA['contact'],
               openapi_tags=APP_METADATA['tags_metadata'],
-              root_path="/bookstore-catalog")
+              root_path="/bookstore-catalog" if CONFIG.catalog_host != 'localhost' else "",
+              docs_url='/openapi')
 
 app.add_middleware(
     CORSMiddleware,
@@ -44,7 +45,14 @@ app.mount("/metrics", metrics_app)
 
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
+    rid = None
+    try:
+        rid = request.headers.get('rid')
+    except:
+        pass
     idem = uuid.uuid4()
+    if rid != None:
+        idem = rid
     logger.info(f"method={str.upper(request.method)} rid={idem} app={CONFIG.app_name} version={CONFIG.version} START_REQUEST path={request.url.path}")
     start_time = time.time()
     
@@ -116,7 +124,7 @@ def read_books():
 
 
 @app.post('/books', tags=['book'])
-async def create_book(bookBody: Book):
+async def create_book(bookBody: Book, response: Response):
     try:
         title = bookBody.title
         author = bookBody.author
@@ -131,7 +139,8 @@ async def create_book(bookBody: Book):
         session.commit()
         session.close()
 
-        return Response(status_code=201, content='Book added.')
+        response.status_code = status.HTTP_201_CREATED
+        return {'book': book}
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))

@@ -15,7 +15,7 @@ class Books(SQLModel, table=True):
 if CONFIG.db_url == None:
     raise KeyError('No DB URL specified in ENV...')
 
-engine = create_engine(CONFIG.db_url, echo=True)
+engine = create_engine(CONFIG.db_url)
 
 def get_all_books():
     with Session(engine) as session:
